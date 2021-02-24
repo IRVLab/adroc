@@ -15,7 +15,7 @@ from openpose_ros_msgs.msg import BodypartDetection, PersonDetection
 
 # Dynamic reconfigure stuff.
 from dynamic_reconfigure.server import Server
-from auv_aoc.cfg import DRPConfig
+from auv_aoc.cfg import DRP_ParamsConfig
 
 
 class DRP_Processor:
@@ -72,14 +72,13 @@ class DRP_Processor:
         rospy.Service('drp/stop', Trigger, self.stop_service_handler)
 
         #Dynamic reconfigure server
-        srv = Server(DRPConfig, self.cfg_callback)
-        self.drp_params = None
+        srv = Server(DRP_ParamsConfig, self.cfg_callback)
 
         # DRP Configuration variables
         #TODO add dynamic_reconfigure parameter setting for this
-        self.observation_timeout = self.drp_params.obs_timeout # in terms of seconds
-        self.bbox_target_ratio = self.drp_params.bbox_target_ratio
-        self.shoulder_target_ratio= self.drp_params.shoulder_target_ratio
+        self.observation_timeout = 1
+        self.bbox_target_ratio = 0.6
+        self.shoulder_target_ratio= 0.6
         
 
     '''
@@ -120,10 +119,9 @@ class DRP_Processor:
 
     #Dynamic reconfigure callback
     def cfg_callback(self, config, level):
-        rospy.loginfo("""Reconfigure Request: {int_param}, {double_param},\ 
-            {str_param}, {bool_param}, {size}""".format(**config))
-
-        self.drp_params=config
+        self.observation_timeout = config.obs_timeout
+        self.bbox_target_ratio = config.bbox_target_ratio
+        self.shoulder_target_ratio = config.shoulder_target_ratio
         return config
 
     def start_service_handler(self, request):
