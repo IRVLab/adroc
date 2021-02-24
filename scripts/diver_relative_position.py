@@ -1,34 +1,44 @@
+#!/usr/bin/python
 import rospy
 import math
 
 from std_msgs.msg import Header
-from std_srvs.srv import Trigger
+from sensor_msgs.msg import Image
+from std_srvs.srv import Trigger, TriggerResponse
 
 from auv_aoc.msg import DiverRelativePosition
 from darknet_ros_msgs.msg import BoundingBox, BoundingBoxes
-from open_pose_ros_msgs.msg import BodypartDetection, PersonDetection
+from openpose_ros_msgs.msg import BodypartDetection, PersonDetection
 
 
-class DRP_Processor(object):
+class DRP_Processor:
     def __init__(self):
         rospy.init_node('drp_node', anonymous=True)
 
         # Configuration variables
         #TODO add dynamic_reconfigure parameter setting for this
-        self.observation_timeout = rospy.Duration.from_sec(1)
+        self.observation_timeout = rospy.Duration.from_sec(1).to_sec()
         self.bbox_target_ratio = 0.6
         self.shoulder_target_dist = 100 #pixel distance between left and right shoulders in the ideal situation.
 
-        #TODO add topic names here to enable configuration.
+        self.base_image_topic = '/loco_cams/left/image_raw'
+        self.bbox_topic = '/darknet_ros/bounding_boxes'
+        self.pose_topic = '/detected_poses_keypoints'
+        self.drp_topic = 'drp/drp_target'
+
+        image_msg = rospy.wait_for_message(self.base_image_topic, Image)
+        self.image_w = image_msg.width
+        self.image_h = image_msg.height
+        rospy.loginfo('Aquired base image dimmensions')
 
         # This subscriber provides us with the bounding boxes that we'll use to compute our relative position target.
-        self.bbox_sub = rospy.Subscriber('/darknet_ros/bounding_boxes', BoundingBoxes, self.bbox_msg_cb, queue_size=5)
+        self.bbox_sub = rospy.Subscriber(self.bbox_topic, BoundingBoxes, self.bbox_msg_cb, queue_size=5)
         self.bbox_observation = [0,0,0,0]
         self.bbox_conf = 0.0
         self.bbox_ts = 0
 
         # This subscriber provides us with the pose information that we'll use to compute our relative position target.
-        self.pose_sub = rospy.Subscriber('/trt_pose/detections', PersonDetection, self.pose_msg_cb, queue_size=5)
+        self.pose_sub = rospy.Subscriber(self.pose_topic, PersonDetection, self.pose_msg_cb, queue_size=5)
         self.rs_observation = [0,0]
         self.rs_conf = 1.0
         self.rs_ts = 0
@@ -37,10 +47,10 @@ class DRP_Processor(object):
         self.ls_ts = 0
 
         # This publisher is how we send out the calculated diver-relative-position
-        self.drp_pub = rospy.Publisher('drp/drp_target', DiverRelativePosition, queue_size=5)
+        self.drp_pub = rospy.Publisher(self.drp_topic, DiverRelativePosition, queue_size=5)
 
         # These services allow other nodes to turn DRP on and off, which keeps it from publishing DRP targets when we're doing other stuff.
-        self.drp_active = False # This boolean turns DRP processing on and off.
+        self.drp_active = True # This boolean turns DRP processing on and off.
         rospy.Service('drp/start', Trigger, self.start_service_handler)
         rospy.Service('drp/stop', Trigger, self.stop_service_handler)
         
@@ -51,16 +61,20 @@ class DRP_Processor(object):
     #Receieves a bbox message and stores it in the DRP_Processor object.
     def bbox_msg_cb(self, msg):
         boxes = list()
-        confs = list()
+        max_conf = 0
+        max_idx = None
 
-        for b in msg.bounding_boxes:
+        for idx, b in enumerate(msg.bounding_boxes):
             boxes.append(b)
-            confs.append(b.probability)
-        
-        selbox = boxes[boxes.index(max(confs))]
-        self.bbox_observation = [selbox.xmin, selbox.ymin, selbox.xmax, selbox.ymax]
-        self.bbox_conf = max(confs)
-        self.bbox_ts = msg.header.stamp
+            if b.probability > max_conf:
+                max_conf = b.probability
+                max_idx = idx
+
+        if max_idx:
+            selbox = boxes[max_idx]
+            self.bbox_observation = [selbox.xmin, selbox.ymin, selbox.xmax, selbox.ymax]
+            self.bbox_conf = max(confs)
+            self.bbox_ts = msg.header.stamp
 
     #Receieves a Pose message and stores it in the DRP_Processor object.
     def pose_msg_cb(self, msg):
@@ -74,11 +88,17 @@ class DRP_Processor(object):
 
     def start_service_handler(self, request):
         self.drp_active = True
-        return True
+        t = TriggerResponse()
+        t.success=True
+        t.message="DRP started"
+        return t
 
     def stop_service_handler(self, request):
         self.drp_active = False
-        return True
+        t = TriggerResponse()
+        t.success=True
+        t.message="DRP stopped"
+        return t
 
     '''
         DRP processing functions, which produce a single DRP (center point and pseudo distance) based on bbox and pose detections of a human target
@@ -106,7 +126,7 @@ class DRP_Processor(object):
         cp_y = int(ymin+bbox_h/2.0)
 
         bbox_area = bbox_w * bbox_h
-        image_area = 0 #TODO where to get this?
+        image_area = self.image_w * self.image_h
 
         # This is calculation from target_following, gotta make sure it works for us.
         pd = self.bbox_target_ratio * (1.0-bbox_area/float(image_area))
@@ -131,7 +151,7 @@ class DRP_Processor(object):
 
     def process(self):
         if self.drp_active:
-            now = rospy.Time.now() #Get current ros time.
+            now = rospy.Time.now().to_sec() #Get current ros time.
             cp_pose, cp_bbox, pdist_pose, pdist_bbox = None, None, None, None
 
             if self.pose_valid(now):
@@ -143,9 +163,10 @@ class DRP_Processor(object):
             # Set up DRP message.
             msg = DiverRelativePosition()
             msg.header = Header()
-            msg.header.stamp = now
+            msg.header.stamp = rospy.Time.now()
 
             if cp_pose and cp_bbox: #Both are available.
+                rospy.loginfo('Estimating DRP based on bbox and pose')
                 #Average of center point from bounding box and pose
                 msg.target_x = int(cp_pose[0] + cp_bbox[0])/2
                 msg.target_y = int(cp_pose[1] + cp_bbox[1])/2
@@ -153,18 +174,21 @@ class DRP_Processor(object):
                 msg.psuedo_distance = pdist_pose #We always used pose pseudo-distance when it's available, because it's more accurate.
 
             elif cp_pose: # Pose center point is available.
+                rospy.loginfo('Estimating DRP based on pose only')
                 msg.target_x = cp_pose[0]
                 msg.target_y = cp_pose[1]
 
                 msg.psuedo_distance = pdist_pose
 
             elif cp_bbox: # BBox center point is avalable.
+                rospy.loginfo('Estimating DRP based on bbox only.')
                 msg.target_x = cp_bbox[0]
                 msg.target_y = cp_bbox[1]
 
                 msg.psuedo_distance = pdist_bbox
 
             else: #Nothing available, so we're going to give up
+                rospy.loginfo('No messages recent enough, so no DRP estimate')
                 return
 
             #Assuming we're here, we should have a filled DRP message, so we just need to publish.
