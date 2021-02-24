@@ -199,6 +199,7 @@ class DRP_Processor:
 
         return (cp_x, cp_y), pd
 
+
     def draw_drp_image(self, centerpoint, pseudo_distance, draw_pose, draw_bbox):
 
         # Image to draw on is available at self.cv_image.
@@ -209,8 +210,33 @@ class DRP_Processor:
 
         # draw_pose and draw_bbox will be set true or false based on whether or not you should draw them
         # Either convert the image to a sensor_msgs/Image here, or after return. Line 248-249 is when you need to publish
-        return
 
+        c_x, c_y = centerpoint
+        circle_size = int(pseudo_distance * 50)
+        cv2.circle(self.cv_image, (c_x,c_y), circle_size, (255, 0, 255),3)
+
+
+        if draw_pose:
+            if self.ls_observation:
+                x, y = self.ls_observation 
+                cv2.circle(self.cv_image, (x,y), 4, (255, 0, 0),3)
+                cv2.putText(self.cv_image , "L", (x - 12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            if self.rs_observation:
+                x, y = self.rs_observation 
+                cv2.circle(self.cv_image, (x,y), 4, (0, 0, 255),3)
+                cv2.putText(self.cv_image , "R", (x - 12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+        if draw_bbox:
+            xmin, ymin, xmax, ymax = self.bbox_observation
+            cv2.rectangle(self.cv_image,(xmin,ymin),(xmax,ymax),(0,255,0),6)
+
+
+        cv2.imshow("DRP visualization", self.cv_image)
+        cv2.waitKey(1)
+
+        return self.bridge_object.cv2_to_imgmsg(self.cv_image, "bgr8")
+
+        
     def process(self):
         if self.drp_active:
             now = rospy.Time.now().to_sec() #Get current ros time.
