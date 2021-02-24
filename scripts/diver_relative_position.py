@@ -2,6 +2,8 @@
 import rospy
 import math
 
+from cv_bridge import CvBridge, CvBridgeError
+
 from std_msgs.msg import Header
 from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger, TriggerResponse
@@ -11,21 +13,36 @@ from darknet_ros_msgs.msg import BoundingBox, BoundingBoxes
 from openpose_ros_msgs.msg import BodypartDetection, PersonDetection
 
 
+# Dynamic reconfigure stuff.
+from dynamic_reconfigure.server import Server
+from auv_aoc.cfg import DRPConfig
+
+
 class DRP_Processor:
     def __init__(self):
         rospy.init_node('drp_node', anonymous=True)
 
-        # Configuration variables
-        #TODO add dynamic_reconfigure parameter setting for this
-        self.observation_timeout = 1 # in terms of seconds
-        self.bbox_target_ratio = 0.6
-        self.shoulder_target_dist = 200 #pixel distance between left and right shoulders in the ideal situation.
+        # Topic variables
+        self.base_image_topic = rospy.get_param('base_image_topic', '/loco_cams/left/image_raw')
+        self.bbox_topic = rospy.get_param('bbox_topic','/darknet_ros/bounding_boxes')
+        self.pose_topic = rospy.get_param('pose_topic','/detected_poses_keypoints')
+        self.drp_topic = rospy.get_param('drp_topic','drp/drp_target')
 
-        self.base_image_topic = '/loco_cams/left/image_raw'
-        self.bbox_topic = '/darknet_ros/bounding_boxes'
-        self.pose_topic = '/detected_poses_keypoints'
-        self.drp_topic = 'drp/drp_target'
+        # Option variables
+        self.visualize = rospy.get_param('vizualize', default=False)
 
+
+        if self.visualize:
+            self.base_image_sub = rospy.Subscriber(self.base_image_topic, Image, self.base_image_cb)
+            
+            self.drp_image_topic = rospy.get_param('drp_image_topic', 'drp/drp_image')
+            self.drp_image_pub = rospy.Publisher(self.drp_image_topic, Image)
+
+            self.bridge_object = CvBridge()
+            self.cv_image = None
+
+
+        ## Actual node stuff starting to happen here.
         image_msg = rospy.wait_for_message(self.base_image_topic, Image)
         self.image_w = image_msg.width
         self.image_h = image_msg.height
@@ -53,6 +70,16 @@ class DRP_Processor:
         self.drp_active = True # This boolean turns DRP processing on and off.
         rospy.Service('drp/start', Trigger, self.start_service_handler)
         rospy.Service('drp/stop', Trigger, self.stop_service_handler)
+
+        #Dynamic reconfigure server
+        srv = Server(DRPConfig, self.cfg_callback)
+        self.drp_params = None
+
+        # DRP Configuration variables
+        #TODO add dynamic_reconfigure parameter setting for this
+        self.observation_timeout = self.drp_params.obs_timeout # in terms of seconds
+        self.bbox_target_ratio = self.drp_params.bbox_target_ratio
+        self.shoulder_target_ratio= self.drp_params.shoulder_target_ratio
         
 
     '''
@@ -85,6 +112,19 @@ class DRP_Processor:
         self.ls_observation = [msg.left_shoulder.x, msg.left_shoulder.y]
         self.ls_conf = msg.left_shoulder.confidence
         self.ls_ts = rospy.Time.now().to_sec()
+
+    # Stores the base image in a variable. Shouldn't be called unless the visualize option is set.
+    def base_image_cb(self, msg):
+        self.cv_image = self.bridge_object.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+
+
+    #Dynamic reconfigure callback
+    def cfg_callback(self, config, level):
+        rospy.loginfo("""Reconfigure Request: {int_param}, {double_param},\ 
+            {str_param}, {bool_param}, {size}""".format(**config))
+
+        self.drp_params=config
+        return config
 
     def start_service_handler(self, request):
         self.drp_active = True
@@ -155,20 +195,35 @@ class DRP_Processor:
         cp_y = int((ly+ry)/2)
 
         dist = math.sqrt( (lx-rx)**2 + (ly-ry)**2 )
-        pd = dist/self.shoulder_target_dist  #Ratio betwen target shoulder pixel distance and actual pixel distance.
+        pd = dist/self.shoulder_target_ratio #Ratio betwen target shoulder pixel distance and actual pixel distance.
 
         return (cp_x, cp_y), pd
 
+    def draw_drp_image(self, centerpoint, pseudo_distance, draw_pose, draw_bbox):
+
+        # Image to draw on is available at self.cv_image.
+        # Right shoulder x,y list is self.rs_observation
+        # Left shoulder x,y list is self.ls_observation
+        # Bounding box [xmin, ymin, xmax, ymax] is self.bbox_observation
+        # DRP data is passed in as centerpoint (x,y), and PD
+
+        # draw_pose and draw_bbox will be set true or false based on whether or not you should draw them
+        # Either convert the image to a sensor_msgs/Image here, or after return. Line 248-249 is when you need to publish
+        return
 
     def process(self):
         if self.drp_active:
             now = rospy.Time.now().to_sec() #Get current ros time.
             cp_pose, cp_bbox, pdist_pose, pdist_bbox = None, None, None, None
+            centerpoint = []
+            pseudo_distance = 0
 
-            if self.pose_valid(now):
+            pose_valid = self.pose_valid(now)
+            bbox_valid = self.bbox_valid(now)
+            if pose_valid:
                 cp_pose, pdist_pose = self.pose_to_drp()
 
-            if self.bbox_valid(now):
+            if bbox_valid:
                 cp_bbox, pdist_bbox = self.bbox_to_drp()
             
             # Set up DRP message.
@@ -181,34 +236,43 @@ class DRP_Processor:
                 rospy.loginfo('Estimating DRP based on bbox and pose')
                 rospy.loginfo('CP_POSE:(%d, %d), CP_BBOX:(%d,%d), PD_POSE:%f, PD_BBOX:%f', cp_pose[0], cp_pose[1], cp_bbox[0], cp_bbox[1], pdist_pose, pdist_bbox)
                 #Average of center point from bounding box and pose
-                msg.target_x = int(cp_pose[0] + cp_bbox[0])/2
-                msg.target_y = int(cp_pose[1] + cp_bbox[1])/2
+                centerpoint[0] = int(cp_pose[0] + cp_bbox[0])/2
+                centerpoint[1] = int(cp_pose[1] + cp_bbox[1])/2
 
-                msg.psuedo_distance = pdist_pose #We always used pose pseudo-distance when it's available, because it's more accurate.
+                pseudo_distance = pdist_pose #We always used pose pseudo-distance when it's available, because it's more accurate.
 
             elif (not cp_pose is None): # Pose center point is available.
                 rospy.loginfo('Estimating DRP based on pose only')
                 rospy.loginfo('CP_POSE:(%d,%d), PD_POSE:%f', cp_pose[0], cp_pose[1], pdist_pose)
-                msg.target_x = cp_pose[0]
-                msg.target_y = cp_pose[1]
+                centerpoint[0] = cp_pose[0]
+                centerpoint[1] = cp_pose[1]
 
-                msg.psuedo_distance = pdist_pose
+                pseudo_distance = pdist_pose
 
             elif (not cp_bbox is None): # BBox center point is avalable.
                 rospy.loginfo('Estimating DRP based on bbox only.')
                 rospy.loginfo('CP_BBOX:(%d, %d), PD_BBOX:%f', cp_bbox[0], cp_bbox[1], pdist_bbox)
-                msg.target_x = cp_bbox[0]
-                msg.target_y = cp_bbox[1]
+                centerpoint[0] = cp_bbox[0]
+                centerpoint[1] = cp_bbox[1]
 
-                msg.psuedo_distance = pdist_bbox
+                pseudo_distance = pdist_bbox
 
             else: #Nothing available, so we're going to give up
                 rospy.loginfo('No messages recent enough, so no DRP estimate')
                 return
             
-            rospy.loginfo('DRP: X=%d,Y=%d, PD=%d', msg.target_x, msg.target_y, msg.psuedo_distance)
+            rospy.loginfo('DRP: X=%d,Y=%d, PD=%d', msg.target_x, msg.target_y, msg.pseudo_distance)
             #Assuming we're here, we should have a filled DRP message, so we just need to publish.
+            msg.target_x = centerpoint[0]
+            msg.target_y = centerpoint[1]
+            msg.pseudo_distance = pseudo_distance
+
             self.drp_pub.publish(msg)
+
+            # TODO update this to whatever you need to.
+            if self.visualize:
+                image = self.draw_drp_image(centerpoint, pseudo_distance, pose_valid, bbox_valid)
+                self.drp_image_pub.publish(image)
 
         else:
             return
