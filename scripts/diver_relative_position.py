@@ -17,7 +17,7 @@ class DRP_Processor:
 
         # Configuration variables
         #TODO add dynamic_reconfigure parameter setting for this
-        self.observation_timeout = rospy.Duration.from_sec(1).to_sec()
+        self.observation_timeout = 1 # in terms of seconds
         self.bbox_target_ratio = 0.6
         self.shoulder_target_dist = 100 #pixel distance between left and right shoulders in the ideal situation.
 
@@ -74,17 +74,17 @@ class DRP_Processor:
             selbox = boxes[max_idx]
             self.bbox_observation = [selbox.xmin, selbox.ymin, selbox.xmax, selbox.ymax]
             self.bbox_conf = max(confs)
-            self.bbox_ts = msg.header.stamp
+            self.bbox_ts = msg.header.stamp.secs
 
     #Receieves a Pose message and stores it in the DRP_Processor object.
     def pose_msg_cb(self, msg):
         self.rs_observation = [msg.right_shoulder.x, msg.right_shoulder.y]
         self.rs_conf = msg.right_shoulder.confidence
-        self.rs_ts = rospy.Time.now()
+        self.rs_ts = rospy.Time.now().to_sec()
 
         self.ls_observation = [msg.left_shoulder.x, msg.left_shoulder.y]
         self.ls_conf = msg.left_shoulder.confidence
-        self.ls_ts = rospy.Time.now()
+        self.ls_ts = rospy.Time.now().to_sec()
 
     def start_service_handler(self, request):
         self.drp_active = True
@@ -107,11 +107,14 @@ class DRP_Processor:
     # If there is a recent enough Pose to work off of, return true, otherwise false.
     def pose_valid(self, now):
         #TODO could add confidence filtering here?
-        return ((self.rs_ts + self.observation_timeout) < now) & ((self.rs_ts + self.observation_timeout) < now) # we need to check that both of the shoulders are recent enough, since we might get detections with only one or the other.
+        rospy.loginf(now, self.rs_ts, (now-self.rs_ts), self.observation_timeout)
+        rospy.loginf(now, self.ls_ts, (now-self.ls_ts), self.observation_timeout)
+        return ((now - self.rs_ts) < self.observation_timeout) and ((now - self.ls_ts) < self.observation_timeout) # we need to check that both of the shoulders are recent enough, since we might get detections with only one or the other.
 
     # If there is a recent enough BBox to work off of, return true, otherwise false.
     def bbox_valid(self, now):
-        return ((self.bbox_ts + self.observation_timeout) < now)
+        rospy.loginf(now, self.bbox_ts, (now-self.bbox_ts), self.observation_timeout)
+        return ((now- self.bbox_ts) < self.observation_timeout)
         
 
     # Make a DRP (centerpoint and pseudo-distance) out of a pose observation.
