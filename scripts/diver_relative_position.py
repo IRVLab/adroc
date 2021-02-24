@@ -19,7 +19,7 @@ class DRP_Processor:
         #TODO add dynamic_reconfigure parameter setting for this
         self.observation_timeout = 1 # in terms of seconds
         self.bbox_target_ratio = 0.6
-        self.shoulder_target_dist = 100 #pixel distance between left and right shoulders in the ideal situation.
+        self.shoulder_target_dist = 200 #pixel distance between left and right shoulders in the ideal situation.
 
         self.base_image_topic = '/loco_cams/left/image_raw'
         self.bbox_topic = '/darknet_ros/bounding_boxes'
@@ -61,7 +61,7 @@ class DRP_Processor:
     #Receieves a bbox message and stores it in the DRP_Processor object.
     def bbox_msg_cb(self, msg):
         boxes = list()
-        max_conf = 0
+        max_conf = -1
         max_idx = None
 
         for idx, b in enumerate(msg.bounding_boxes):
@@ -70,11 +70,11 @@ class DRP_Processor:
                 max_conf = b.probability
                 max_idx = idx
 
-        if max_idx:
+        if not max_idx is None:
             selbox = boxes[max_idx]
             self.bbox_observation = [selbox.xmin, selbox.ymin, selbox.xmax, selbox.ymax]
-            self.bbox_conf = max(confs)
-            self.bbox_ts = msg.header.stamp.secs
+            self.bbox_conf = max_conf
+            self.bbox_ts = rospy.Time.now().to_sec()
 
     #Receieves a Pose message and stores it in the DRP_Processor object.
     def pose_msg_cb(self, msg):
@@ -107,18 +107,26 @@ class DRP_Processor:
     # If there is a recent enough Pose to work off of, return true, otherwise false.
     def pose_valid(self, now):
         #TODO could add confidence filtering here?
-        rospy.loginf(now, self.rs_ts, (now-self.rs_ts), self.observation_timeout)
-        rospy.loginf(now, self.ls_ts, (now-self.ls_ts), self.observation_timeout)
-        return ((now - self.rs_ts) < self.observation_timeout) and ((now - self.ls_ts) < self.observation_timeout) # we need to check that both of the shoulders are recent enough, since we might get detections with only one or the other.
+        #rospy.loginfo('now:%d  rs:%d   diff:%d  timeout:%d', now, self.rs_ts, (now-self.rs_ts), self.observation_timeout)
+        #rospy.loginfo('now:%d  ls%d    diff%d   timeout:%d', now, self.ls_ts, (now-self.ls_ts), self.observation_timeout)
+        time_term= ((now - self.rs_ts) < self.observation_timeout) and ((now - self.ls_ts) < self.observation_timeout) # we need to check that both of the shoulders are recent enough, since we might get detections with only one or the other.
+
+
+        zero_r_term = not (self.rs_observation[0] == 0 and self.rs_observation[1] ==0)
+        zero_l_term = not (self.ls_observation[0] == 0 and self.ls_observation[1] ==0)
+
+        return time_term and zero_r_term and zero_l_term
 
     # If there is a recent enough BBox to work off of, return true, otherwise false.
     def bbox_valid(self, now):
-        rospy.loginf(now, self.bbox_ts, (now-self.bbox_ts), self.observation_timeout)
-        return ((now- self.bbox_ts) < self.observation_timeout)
+        #rospy.loginfo('now: %d   bbox:%d    diff:%d   timeout:%d', now, self.bbox_ts, (now-self.bbox_ts), self.observation_timeout)
+        time_term= ((now- self.bbox_ts) < self.observation_timeout)
+        coord_term= (self.bbox_observation[0] >=0 and self.bbox_observation[1] >=0 and self.bbox_observation[2] >=0 and self.bbox_observation[3])
+        return time_term and coord_term
         
 
-    # Make a DRP (centerpoint and pseudo-distance) out of a pose observation.
-    def pose_to_drp(self):
+    # Make a DRP (centerpoint and pseudo-distance) out of a bbox observation.
+    def bbox_to_drp(self):
         cp_x, cp_y, pd = None, None, None
 
         xmin, ymin, xmax, ymax = self.bbox_observation
@@ -136,8 +144,8 @@ class DRP_Processor:
 
         return (cp_x, cp_y), pd
 
-    # Make a DRP (centerpoint and pseudo-distance) out of a bbox observation.
-    def bbox_to_drp(self):
+    # Make a DRP (centerpoint and pseudo-distance) out of a pose observation.
+    def pose_to_drp(self):
         cp_x, cp_y, pd = None, None, None
 
         rx, ry = self.rs_observation
@@ -168,23 +176,27 @@ class DRP_Processor:
             msg.header = Header()
             msg.header.stamp = rospy.Time.now()
 
-            if cp_pose and cp_bbox: #Both are available.
+
+            if (not cp_pose is None) and (not cp_bbox is None): #Both are available.
                 rospy.loginfo('Estimating DRP based on bbox and pose')
+                rospy.loginfo('CP_POSE:(%d, %d), CP_BBOX:(%d,%d), PD_POSE:%f, PD_BBOX:%f', cp_pose[0], cp_pose[1], cp_bbox[0], cp_bbox[1], pdist_pose, pdist_bbox)
                 #Average of center point from bounding box and pose
                 msg.target_x = int(cp_pose[0] + cp_bbox[0])/2
                 msg.target_y = int(cp_pose[1] + cp_bbox[1])/2
 
                 msg.psuedo_distance = pdist_pose #We always used pose pseudo-distance when it's available, because it's more accurate.
 
-            elif cp_pose: # Pose center point is available.
+            elif (not cp_pose is None): # Pose center point is available.
                 rospy.loginfo('Estimating DRP based on pose only')
+                rospy.loginfo('CP_POSE:(%d,%d), PD_POSE:%f', cp_pose[0], cp_pose[1], pdist_pose)
                 msg.target_x = cp_pose[0]
                 msg.target_y = cp_pose[1]
 
                 msg.psuedo_distance = pdist_pose
 
-            elif cp_bbox: # BBox center point is avalable.
+            elif (not cp_bbox is None): # BBox center point is avalable.
                 rospy.loginfo('Estimating DRP based on bbox only.')
+                rospy.loginfo('CP_BBOX:(%d, %d), PD_BBOX:%f', cp_bbox[0], cp_bbox[1], pdist_bbox)
                 msg.target_x = cp_bbox[0]
                 msg.target_y = cp_bbox[1]
 
@@ -193,7 +205,8 @@ class DRP_Processor:
             else: #Nothing available, so we're going to give up
                 rospy.loginfo('No messages recent enough, so no DRP estimate')
                 return
-
+            
+            rospy.loginfo('DRP: X=%d,Y=%d, PD=%d', msg.target_x, msg.target_y, msg.psuedo_distance)
             #Assuming we're here, we should have a filled DRP message, so we just need to publish.
             self.drp_pub.publish(msg)
 
