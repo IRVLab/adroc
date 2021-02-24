@@ -23,7 +23,7 @@ class DRP_Processor:
         rospy.init_node('drp_node', anonymous=True, log_level=rospy.INFO) ########
 
         # Topic variables
-        self.base_image_topic = rospy.get_param('base_image_topic', '/left_camera/image_raw')
+        self.base_image_topic = rospy.get_param('base_image_topic', '/loco_cams/right/image_raw')
         self.bbox_topic = rospy.get_param('bbox_topic','/darknet_ros/bounding_boxes')
         self.pose_topic = rospy.get_param('pose_topic','/detected_poses_keypoints')
         self.drp_topic = rospy.get_param('drp_topic','drp/drp_target')
@@ -269,6 +269,9 @@ class DRP_Processor:
             msg.target_y = centerpoint[1]
             msg.pseudo_distance = pseudo_distance
             rospy.loginfo('DRP: X=%d,Y=%d, PD=%f', msg.target_x, msg.target_y, msg.pseudo_distance)
+
+            msg.image_w = self.image_w
+            msg.image_h = self.image_h
 
             self.drp_pub.publish(msg)
 

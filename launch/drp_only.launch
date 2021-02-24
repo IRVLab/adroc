@@ -1,6 +1,6 @@
 <launch>
     <node name='diver_relative_positioning' pkg='auv_aoc' type='diver_relative_position.py' output='screen'> 
         <param name='visualize' value='True'/>
-        <param name='base_image_topic' value='/left_camera/image_raw'/>
+        <param name='base_image_topic' value='/loco_cams/right/image_raw'/>
     </node>
 </launch>
