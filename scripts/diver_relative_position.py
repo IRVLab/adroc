@@ -214,22 +214,24 @@ class DRP_Processor:
 
         c_x, c_y = centerpoint
         circle_size = int(pseudo_distance * 50)
-        cv2.circle(self.cv_image, (c_x,c_y), circle_size, (255, 0, 255),3)
-
+        cv2.circle(self.cv_image, (c_x,c_y), circle_size, (255, 0, 255),2)
+        cv2.putText(self.cv_image , "current PD : "+str(float("{:.2f}".format(pseudo_distance))), (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 0, 255), 2)
+        cv2.circle(self.cv_image, (c_x,c_y), 50, (255, 255, 0),2)
+        cv2.putText(self.cv_image , "target PD : 1.00", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 0), 2)
 
         if draw_pose:
             if self.ls_observation:
                 x, y = self.ls_observation 
-                cv2.circle(self.cv_image, (x,y), 4, (255, 0, 0),3)
-                cv2.putText(self.cv_image , "L", (x - 12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                cv2.circle(self.cv_image, (x,y), 7, (255, 0, 0),3)
+                cv2.putText(self.cv_image , "L", (x-10, y-20), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 2)
             if self.rs_observation:
                 x, y = self.rs_observation 
-                cv2.circle(self.cv_image, (x,y), 4, (0, 0, 255),3)
-                cv2.putText(self.cv_image , "R", (x - 12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                cv2.circle(self.cv_image, (x,y), 7, (0, 0, 255),3)
+                cv2.putText(self.cv_image , "R", (x-10, y-20), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 2)
 
         if draw_bbox:
             xmin, ymin, xmax, ymax = self.bbox_observation
-            cv2.rectangle(self.cv_image,(xmin,ymin),(xmax,ymax),(0,255,0),6)
+            cv2.rectangle(self.cv_image,(xmin,ymin),(xmax,ymax),(0,255,0),3)
 
 
         cv2.imshow("DRP visualization", self.cv_image)
