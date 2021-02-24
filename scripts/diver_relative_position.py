@@ -15,15 +15,15 @@ from openpose_ros_msgs.msg import BodypartDetection, PersonDetection
 
 # Dynamic reconfigure stuff.
 from dynamic_reconfigure.server import Server
-from auv_aoc.cfg import DRPConfig
+from auv_aoc.cfg import DRP_ParamsConfig
 
 
 class DRP_Processor:
     def __init__(self):
-        rospy.init_node('drp_node', anonymous=True)
+        rospy.init_node('drp_node', anonymous=True, log_level=rospy.INFO) ########
 
         # Topic variables
-        self.base_image_topic = rospy.get_param('base_image_topic', '/loco_cams/left/image_raw')
+        self.base_image_topic = rospy.get_param('base_image_topic', '/loco_cams/right/image_raw')
         self.bbox_topic = rospy.get_param('bbox_topic','/darknet_ros/bounding_boxes')
         self.pose_topic = rospy.get_param('pose_topic','/detected_poses_keypoints')
         self.drp_topic = rospy.get_param('drp_topic','drp/drp_target')
@@ -72,14 +72,13 @@ class DRP_Processor:
         rospy.Service('drp/stop', Trigger, self.stop_service_handler)
 
         #Dynamic reconfigure server
-        srv = Server(DRPConfig, self.cfg_callback)
-        self.drp_params = None
+        srv = Server(DRP_ParamsConfig, self.cfg_callback)
 
         # DRP Configuration variables
-        #TODO add dynamic_reconfigure parameter setting for this
-        self.observation_timeout = self.drp_params.obs_timeout # in terms of seconds
-        self.bbox_target_ratio = self.drp_params.bbox_target_ratio
-        self.shoulder_target_ratio= self.drp_params.shoulder_target_ratio
+        #TODO add dynamic_reconfigure parameter setting for this ########
+        self.observation_timeout = 1
+        self.bbox_target_ratio = 0.7 ###### 0.7 for non-square , 0.7 ** 2.3 (2.5 square) worked
+        self.shoulder_target_ratio= 0.17 ########
         
 
     '''
@@ -120,10 +119,9 @@ class DRP_Processor:
 
     #Dynamic reconfigure callback
     def cfg_callback(self, config, level):
-        rospy.loginfo("""Reconfigure Request: {int_param}, {double_param},\ 
-            {str_param}, {bool_param}, {size}""".format(**config))
-
-        self.drp_params=config
+        self.observation_timeout = config.obs_timeout
+        self.bbox_target_ratio = config.bbox_target_ratio
+        self.shoulder_target_ratio = config.shoulder_target_ratio
         return config
 
     def start_service_handler(self, request):
@@ -180,7 +178,9 @@ class DRP_Processor:
         image_area = self.image_w * self.image_h
 
         # This is calculation from target_following, gotta make sure it works for us.
-        pd = self.bbox_target_ratio * (1.0-bbox_area/float(image_area))
+        # pd = self.bbox_target_ratio / (1.0 - bbox_area/float(image_area))
+        pd = self.bbox_target_ratio / (1.0 - (bbox_area/float(image_area))) ### ***2.5
+
 
         return (cp_x, cp_y), pd
 
@@ -194,8 +194,9 @@ class DRP_Processor:
         cp_x = int((lx+rx)/2)
         cp_y = int((ly+ry)/2)
 
-        dist = math.sqrt( (lx-rx)**2 + (ly-ry)**2 )
-        pd = dist/self.shoulder_target_ratio #Ratio betwen target shoulder pixel distance and actual pixel distance.
+        dist = math.sqrt( (lx-rx)**2 + (ly-ry)**2 ) 
+        # pd = dist/self.image_w * (1.0)/self.shoulder_target_ratio #Ratio betwen target shoulder pixel distance and actual pixel distance.
+        pd = dist/self.image_w * (1.0)/self.shoulder_target_ratio #Ratio betwen target shoulder pixel distance and actual pixel distance.
 
         return (cp_x, cp_y), pd
 
@@ -241,7 +242,7 @@ class DRP_Processor:
         if self.drp_active:
             now = rospy.Time.now().to_sec() #Get current ros time.
             cp_pose, cp_bbox, pdist_pose, pdist_bbox = None, None, None, None
-            centerpoint = []
+            centerpoint = [None]*2 #######
             pseudo_distance = 0
 
             pose_valid = self.pose_valid(now)
@@ -262,8 +263,10 @@ class DRP_Processor:
                 rospy.loginfo('Estimating DRP based on bbox and pose')
                 rospy.loginfo('CP_POSE:(%d, %d), CP_BBOX:(%d,%d), PD_POSE:%f, PD_BBOX:%f', cp_pose[0], cp_pose[1], cp_bbox[0], cp_bbox[1], pdist_pose, pdist_bbox)
                 #Average of center point from bounding box and pose
-                centerpoint[0] = int(cp_pose[0] + cp_bbox[0])/2
-                centerpoint[1] = int(cp_pose[1] + cp_bbox[1])/2
+                # centerpoint[0] = int(cp_pose[0] + cp_bbox[0])/2
+                # centerpoint[1] = int(cp_pose[1] + cp_bbox[1])/2
+                centerpoint[0] = cp_pose[0]
+                centerpoint[1] = cp_pose[1]
 
                 pseudo_distance = pdist_pose #We always used pose pseudo-distance when it's available, because it's more accurate.
 
@@ -287,11 +290,14 @@ class DRP_Processor:
                 rospy.loginfo('No messages recent enough, so no DRP estimate')
                 return
             
-            rospy.loginfo('DRP: X=%d,Y=%d, PD=%d', msg.target_x, msg.target_y, msg.pseudo_distance)
             #Assuming we're here, we should have a filled DRP message, so we just need to publish.
             msg.target_x = centerpoint[0]
             msg.target_y = centerpoint[1]
             msg.pseudo_distance = pseudo_distance
+            rospy.loginfo('DRP: X=%d,Y=%d, PD=%f', msg.target_x, msg.target_y, msg.pseudo_distance)
+
+            msg.image_w = self.image_w
+            msg.image_h = self.image_h
 
             self.drp_pub.publish(msg)
 

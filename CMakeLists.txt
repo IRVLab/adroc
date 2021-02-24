@@ -10,6 +10,7 @@ project(auv_aoc)
 find_package(catkin REQUIRED COMPONENTS
   message_generation
   message_runtime
+  dynamic_reconfigure
   rospy
   std_msgs
   sensor_msgs
@@ -89,11 +90,10 @@ generate_messages(
 ##   * uncomment the "generate_dynamic_reconfigure_options" section below
 ##     and list every .cfg file to be processed
 
-## Generate dynamic reconfigure parameters in the 'cfg' folder
-# generate_dynamic_reconfigure_options(
-#   cfg/DynReconf1.cfg
-#   cfg/DynReconf2.cfg
-# )
+# Generate dynamic reconfigure parameters in the 'cfg' folder
+generate_dynamic_reconfigure_options(
+   cfg/DRP_Params.cfg
+)
 
 ###################################
 ## catkin specific configuration ##
