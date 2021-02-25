@@ -77,7 +77,7 @@ class DRP_Processor:
         # DRP Configuration variables
         #TODO add dynamic_reconfigure parameter setting for this ########
         self.observation_timeout = 1
-        self.bbox_target_ratio = 0.7 ###### 0.7 for non-square , 0.7 ** 2.3 (2.5 square) worked
+        self.bbox_target_ratio = 0.17*1.5 ###### 0.7 for non-square , 0.7 ** 2.3 (2.5 square) worked
         self.shoulder_target_ratio= 0.17 ########
         
 
@@ -179,8 +179,8 @@ class DRP_Processor:
 
         # This is calculation from target_following, gotta make sure it works for us.
         # pd = self.bbox_target_ratio / (1.0 - bbox_area/float(image_area))
-        pd = self.bbox_target_ratio / (1.0 - (bbox_area/float(image_area))) ### ***2.5
-
+        # pd = self.bbox_target_ratio / (1.0 - (bbox_area/float(image_area))) ### ***2.5
+        pd = abs(xmax-xmin)/self.image_w * (1.0)/self.bbox_target_ratio #Ratio betwen target shoulder pixel distance and actual pixel distance.
 
         return (cp_x, cp_y), pd
 
