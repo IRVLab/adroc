@@ -2,6 +2,7 @@
 import rospy
 import math
 
+import cv2
 from cv_bridge import CvBridge, CvBridgeError
 
 from std_msgs.msg import Header
@@ -23,13 +24,13 @@ class DRP_Processor:
         rospy.init_node('drp_node', anonymous=True, log_level=rospy.INFO) ########
 
         # Topic variables
-        self.base_image_topic = rospy.get_param('base_image_topic', '/loco_cams/right/image_raw')
-        self.bbox_topic = rospy.get_param('bbox_topic','/darknet_ros/bounding_boxes')
-        self.pose_topic = rospy.get_param('pose_topic','/detected_poses_keypoints')
-        self.drp_topic = rospy.get_param('drp_topic','drp/drp_target')
+        self.base_image_topic = rospy.get_param('diver_relative_positioning/base_image_topic', '/loco_cams/right/image_raw')
+        self.bbox_topic = rospy.get_param('diver_relative_positioning/bbox_topic','/darknet_ros/bounding_boxes')
+        self.pose_topic = rospy.get_param('diver_relative_positioning/pose_topic','/detected_poses_keypoints')
+        self.drp_topic = rospy.get_param('diver_relative_positioning/drp_topic','drp/drp_target')
 
         # Option variables
-        self.visualize = rospy.get_param('vizualize', default=False)
+        self.visualize = rospy.get_param('diver_relative_positioning/vizualize', default=False)
 
 
         if self.visualize:
