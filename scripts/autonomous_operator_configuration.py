@@ -116,7 +116,12 @@ class AOC_Manager:
         elif self.state == AOCState.APPROACH:
             if not self.drp_stable():
                 rospy.loginfo("AOC waiting for stable DRP...")
-                return #If DRP isn't stable yet, keep waiting for DRP to handle it. We don't need to do anything extra.
+                if not self.drp_active():
+                    rospy.loginfo("AOC approach failed, returning to search")
+                    rospy.loginfo("AOC State -> SEARCH")
+                    self.change_state(AOCState.SEARCH) # If we don't see anyone, go to search
+                else:
+                    return #If DRP isn't stable yet, keep waiting for DRP to handle it. We don't need to do anything extra.
             else:
                 req = TrigggerRequest()
                 self.deactivate_drp_controller(req)
@@ -144,7 +149,7 @@ if __name__ == '__main__':
     aoc = AOC_Manager()
     r = rospy.Rate(aoc.rate)
 
-    rospy.wait_for_service('loco/controller/yaw', Yaw)
+    rospy.wait_for_service('loco/controller/yaw')
     rospy.loginfo("Yaw service available...")
     rospy.loginfo("INITIATING AOC!")
 
