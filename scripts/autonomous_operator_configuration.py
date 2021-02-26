@@ -118,6 +118,8 @@ class AOC_Manager:
                 rospy.loginfo("AOC waiting for stable DRP...")
                 if not self.drp_active():
                     rospy.loginfo("AOC approach failed, returning to search")
+                    req = TrigggerRequest()
+                    self.deactivate_drp_controller(req)
                     rospy.loginfo("AOC State -> SEARCH")
                     self.change_state(AOCState.SEARCH) # If we don't see anyone, go to search
                 else:
