@@ -98,7 +98,7 @@ class AOC_Manager:
             else:
                 rospy.loginfo("AOC State -> APPROACH")
                 self.change_state(AOCState.APPROACH) #If we see someone, go to them.
-                req = TrigggerRequest()
+                req = TriggerRequest()
                 self.activate_drp_controller(req)
 
 
@@ -109,7 +109,7 @@ class AOC_Manager:
             else:
                 self.activate_drp_controller()
                 rospy.loginfo("AOC State -> APPROACH")
-                req = TrigggerRequest()
+                req = TriggerRequest()
                 self.activate_drp_controller(req)
                 self.change_state(AOCState.APPROACH) # If we find someone, switch to approach.
 
@@ -118,14 +118,14 @@ class AOC_Manager:
                 rospy.loginfo("AOC waiting for stable DRP...")
                 if not self.drp_active():
                     rospy.loginfo("AOC approach failed, returning to search")
-                    req = TrigggerRequest()
+                    req = TriggerRequest()
                     self.deactivate_drp_controller(req)
                     rospy.loginfo("AOC State -> SEARCH")
                     self.change_state(AOCState.SEARCH) # If we don't see anyone, go to search
                 else:
                     return #If DRP isn't stable yet, keep waiting for DRP to handle it. We don't need to do anything extra.
             else:
-                req = TrigggerRequest()
+                req = TriggerRequest()
                 self.deactivate_drp_controller(req)
                 rospy.loginfo("AOC State -> CONCLUDE")
                 self.change_state(AOCState.CONCLUDE) # TODO instead of going to AOCState.CONCLUDE, go to GREET.
