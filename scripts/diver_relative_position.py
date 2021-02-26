@@ -21,16 +21,16 @@ from auv_aoc.cfg import DRP_ParamsConfig
 
 class DRP_Processor:
     def __init__(self):
-        rospy.init_node('drp_node', anonymous=True, log_level=rospy.INFO) ########
+        rospy.init_node('drp_node', anonymous=False, log_level=rospy.INFO) ########
 
         # Topic variables
-        self.base_image_topic = rospy.get_param('diver_relative_positioning/base_image_topic', '/loco_cams/right/image_raw')
-        self.bbox_topic = rospy.get_param('diver_relative_positioning/bbox_topic','/darknet_ros/bounding_boxes')
-        self.pose_topic = rospy.get_param('diver_relative_positioning/pose_topic','/detected_poses_keypoints')
-        self.drp_topic = rospy.get_param('diver_relative_positioning/drp_topic','drp/drp_target')
+        self.base_image_topic = rospy.get_param('drp/base_image_topic', '/loco_cams/right/image_raw')
+        self.bbox_topic = rospy.get_param('drp/bbox_topic','/darknet_ros/bounding_boxes')
+        self.pose_topic = rospy.get_param('drp/pose_topic','/detected_poses_keypoints')
+        self.drp_topic = rospy.get_param('drp/drp_topic','drp/drp_target')
 
         # Option variables
-        self.visualize = rospy.get_param('diver_relative_positioning/vizualize', default=False)
+        self.visualize = rospy.get_param('drp/vizualize', default=False)
 
 
         if self.visualize:
@@ -69,8 +69,7 @@ class DRP_Processor:
 
         # These services allow other nodes to turn DRP on and off, which keeps it from publishing DRP targets when we're doing other stuff.
         self.drp_active = True # This boolean turns DRP processing on and off.
-        rospy.Service('drp/start', Trigger, self.start_service_handler)
-        rospy.Service('drp/stop', Trigger, self.stop_service_handler)
+
 
         #Dynamic reconfigure server
         srv = Server(DRP_ParamsConfig, self.cfg_callback)
@@ -124,20 +123,6 @@ class DRP_Processor:
         self.bbox_target_ratio = config.bbox_target_ratio
         self.shoulder_target_ratio = config.shoulder_target_ratio
         return config
-
-    def start_service_handler(self, request):
-        self.drp_active = True
-        t = TriggerResponse()
-        t.success=True
-        t.message="DRP started"
-        return t
-
-    def stop_service_handler(self, request):
-        self.drp_active = False
-        t = TriggerResponse()
-        t.success=True
-        t.message="DRP stopped"
-        return t
 
     '''
         DRP processing functions, which produce a single DRP (center point and pseudo distance) based on bbox and pose detections of a human target
