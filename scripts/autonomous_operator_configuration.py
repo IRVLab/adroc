@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import rospy
 
 from auv_aoc.msg import DiverRelativePosition
@@ -26,7 +27,7 @@ class AOC_Manager:
 
         rospy.Subscriber('/drp/drp_target', DiverRelativePosition, self.drp_cb)
         self.drp_msgs = list()
-        self.last_drp_msg = None
+        self.last_drp_msg = 0
 
         self.activate_drp_controller = rospy.ServiceProxy('drp_reactive_controller/start', Trigger)
         self.deactivate_drp_controller = rospy.ServiceProxy('drp_reactive_controller/stop', Trigger)
@@ -35,7 +36,7 @@ class AOC_Manager:
         self.search_yaw_speed = 0.1
 
     def drp_cb(self, msg):
-        if len(drp_msgs) == 5:
+        if len(self.drp_msgs) == 5:
             self.drp_msgs.pop(0)
         
         self.drp_msgs.append(msg)
@@ -45,33 +46,36 @@ class AOC_Manager:
 
     # Return true if there's an active DRP value.
     def drp_active(self):
-        return ((rospy.Time.now().to_sec - self.last_drp_msg) < self.drp_active_timeout)
+        return ((rospy.Time.now().to_sec() - self.last_drp_msg) < self.drp_active_timeout)
     
     # Return true if there's a stable DRP estimation (we're in the appropriate relative postion)
     def drp_stable(self):
-        x_errs = list()
-        y_errs = list()
-        pd_errs = list()
+        if len(self.drp_msgs) >0:
+            x_errs = list()
+            y_errs = list()
+            pd_errs = list()
 
-        image_setpoint_x = self.drp_msgs[0].image_w/2.0
-        image_setpoint_y = self.drp_msgs[0].image_h/2.0 #########
+            image_setpoint_x = self.drp_msgs[0].image_w/2.0
+            image_setpoint_y = self.drp_msgs[0].image_h/2.0 #########
         
-        for drp_msg in self.drp_msgs:
-            x_errs.append(tx - image_setpoint_x)/ float(self.image_w) #Pixel difference between target point and DRP point, normalized by image size.
-            y_errs.append(ty - image_setpoint_y)/ float(self.image_h)
-            pd_errs.append(1.0 - pd)
+            for drp_msg in self.drp_msgs:
+                x_errs.append((drp_msg.target_x - image_setpoint_x)/ float(drp_msg.image_w)) #Pixel difference between target point and DRP point, normalized by image size.
+                y_errs.append((drp_msg.target_y - image_setpoint_y)/ float(drp_msg.image_h))
+                pd_errs.append(1.0 - drp_msg.pseudo_distance)
 
         
-        x_err_mean = abs(sum(x_errs)/len(x_errs))
-        y_err_mean = abs(sum(y_errs)/len(y_errs))
-        pd_err_mean = abs(sum(pd_errs)/len(pd_errs))
+            x_err_mean = abs(sum(x_errs)/len(x_errs))
+            y_err_mean = abs(sum(y_errs)/len(y_errs))
+            pd_err_mean = abs(sum(pd_errs)/len(pd_errs))
 
-        return (x_err_mean < self.x_error_tolerance) and (y_err_mean < self.y_error_tolerance) and (pd_err_mean < self.pd_error_tolerance)
+            return (x_err_mean < self.x_error_tolerance) and (y_err_mean < self.y_error_tolerance) and (pd_err_mean < self.pd_error_tolerance)
+        else:
+            return False
 
     # Search for a diver
     def perform_search(self):
         # Using LoCO Pilot motion primatives, ask for small Yaw (for duration appropriate to the rate)
-        req = YawRequest
+        req = YawRequest()
         req.duration = 1/self.rate
         req.thrust = self.search_yaw_speed
 
@@ -86,7 +90,7 @@ class AOC_Manager:
         self.state = state 
 
     # Based on current state, check for state change. Change state if required, process state if not.
-    def run_aoc(self):
+    def run(self):
         if self.state == AOCState.INIT:
             if not self.drp_active():
                 rospy.loginfo("AOC State -> SEARCH")
@@ -135,8 +139,6 @@ if __name__ == '__main__':
     aoc = AOC_Manager()
     r = rospy.Rate(aoc.rate)
 
-    rospy.wait_for_message('drp/drp_target', DiverRelativePosition)
-    rospy.loginfo("DRP messages seen...")
     rospy.wait_for_service('loco/controller/yaw', Yaw)
     rospy.loginfo("Yaw service available...")
     rospy.loginfo("INITIATING AOC!")
