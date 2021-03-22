@@ -1,2 +1,2 @@
-# auv_aoc
-ROS package for Autonomous Operator Configuration for AUVs.
+# adroc
+ROS package for Autonomous Diver-Relative Operator Configuration for AUVs.
