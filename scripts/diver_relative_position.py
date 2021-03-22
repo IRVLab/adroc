@@ -9,14 +9,14 @@ from std_msgs.msg import Header
 from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger, TriggerResponse
 
-from auv_aoc.msg import DiverRelativePosition
+from adroc.msg import DiverRelativePosition
 from darknet_ros_msgs.msg import BoundingBox, BoundingBoxes
 from openpose_ros_msgs.msg import BodypartDetection, PersonDetection
 
 
 # Dynamic reconfigure stuff.
 from dynamic_reconfigure.server import Server
-from auv_aoc.cfg import DRP_ParamsConfig
+from adroc.cfg import DRP_ParamsConfig
 
 
 class DRP_Processor:

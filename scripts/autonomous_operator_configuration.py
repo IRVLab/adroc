@@ -1,11 +1,11 @@
 #!/usr/bin/python
 import rospy
 
-from auv_aoc.msg import DiverRelativePosition
+from adroc.msg import DiverRelativePosition
 from loco_pilot.srv import Yaw, YawRequest, YawResponse
 from std_srvs.srv import Trigger, TriggerRequest, TriggerResponse
 
-class AOCState:
+class ADROCState:
     INIT = 0
     SEARCH = 1
     APPROACH = 2
@@ -14,16 +14,16 @@ class AOCState:
     CONCLUDE = 5
     SHUTDOWN = 6
 
-class AOC_Manager:
+class ADROC_Manager:
     def __init__(self):
-        rospy.init_node('aoc_manager', anonymous=False)
+        rospy.init_node('adroc_manager', anonymous=False)
         self.rate = 10
-        self.state = AOCState.INIT
+        self.state = ADROCState.INIT
 
-        self.x_error_tolerance = rospy.get_param('aoc/x_error_tolerance', 0.01)
-        self.y_error_tolerance = rospy.get_param('aoc/y_error_tolerance', 0.01)
-        self.pd_error_tolerance = rospy.get_param('aoc/pd_error_tolerance', 0.1)
-        self.drp_active_timeout = rospy.get_param('aoc/drp_active_timeout', 1)
+        self.x_error_tolerance = rospy.get_param('adroc/x_error_tolerance', 0.01)
+        self.y_error_tolerance = rospy.get_param('adroc/y_error_tolerance', 0.01)
+        self.pd_error_tolerance = rospy.get_param('adroc/pd_error_tolerance', 0.1)
+        self.drp_active_timeout = rospy.get_param('adroc/drp_active_timeout', 1)
 
         rospy.Subscriber('/drp/drp_target', DiverRelativePosition, self.drp_cb)
         self.drp_msgs = list()
@@ -79,7 +79,7 @@ class AOC_Manager:
         req.duration = 1/self.rate
         req.thrust = self.search_yaw_speed
 
-        rospy.loginfo("AOC Searching...yawing at %f for %f seconds", req.thrust, req.duration)
+        rospy.loginfo("ADROC Searching...yawing at %f for %f seconds", req.thrust, req.duration)
         self.yaw_service(req)
 
         return
@@ -91,72 +91,72 @@ class AOC_Manager:
 
     # Based on current state, check for state change. Change state if required, process state if not.
     def run(self):
-        if self.state == AOCState.INIT:
+        if self.state == ADROCState.INIT:
             if not self.drp_active():
-                rospy.loginfo("AOC State -> SEARCH")
-                self.change_state(AOCState.SEARCH) # If we don't see anyone, go to search
+                rospy.loginfo("ADROC State -> SEARCH")
+                self.change_state(ADROCState.SEARCH) # If we don't see anyone, go to search
             else:
-                rospy.loginfo("AOC State -> APPROACH")
-                self.change_state(AOCState.APPROACH) #If we see someone, go to them.
+                rospy.loginfo("ADROC State -> APPROACH")
+                self.change_state(ADROCState.APPROACH) #If we see someone, go to them.
                 req = TriggerRequest()
                 self.activate_drp_controller(req)
 
 
-        elif self.state == AOCState.SEARCH:
+        elif self.state == ADROCState.SEARCH:
             if not self.drp_active():
-                rospy.loginfo("AOC searching...")
+                rospy.loginfo("ADROC searching...")
                 self.perform_search() #If we're still searching and haven't found yet, continue search operations.
             else:
                 self.activate_drp_controller()
-                rospy.loginfo("AOC State -> APPROACH")
+                rospy.loginfo("ADROC State -> APPROACH")
                 req = TriggerRequest()
                 self.activate_drp_controller(req)
-                self.change_state(AOCState.APPROACH) # If we find someone, switch to approach.
+                self.change_state(ADROCState.APPROACH) # If we find someone, switch to approach.
 
-        elif self.state == AOCState.APPROACH:
+        elif self.state == ADROCState.APPROACH:
             if not self.drp_stable():
-                rospy.loginfo("AOC waiting for stable DRP...")
+                rospy.loginfo("ADROC waiting for stable DRP...")
                 if not self.drp_active():
-                    rospy.loginfo("AOC approach failed, returning to search")
+                    rospy.loginfo("ADROC approach failed, returning to search")
                     req = TriggerRequest()
                     self.deactivate_drp_controller(req)
-                    rospy.loginfo("AOC State -> SEARCH")
-                    self.change_state(AOCState.SEARCH) # If we don't see anyone, go to search
+                    rospy.loginfo("ADROC State -> SEARCH")
+                    self.change_state(ADROCState.SEARCH) # If we don't see anyone, go to search
                 else:
                     return #If DRP isn't stable yet, keep waiting for DRP to handle it. We don't need to do anything extra.
             else:
                 req = TriggerRequest()
                 self.deactivate_drp_controller(req)
-                rospy.loginfo("AOC State -> CONCLUDE")
-                self.change_state(AOCState.CONCLUDE) # TODO instead of going to AOCState.CONCLUDE, go to GREET.
+                rospy.loginfo("ADROC State -> CONCLUDE")
+                self.change_state(ADROCState.CONCLUDE) # TODO instead of going to ADROCState.CONCLUDE, go to GREET.
 
-        elif self.state == AOCState.GREET:
-            rospy.logerr("AOC state not implemented.")
+        elif self.state == ADROCState.GREET:
+            rospy.logerr("ADROC state not implemented.")
             return
 
-        elif self.state == AOCState.WAIT_FOR_INPUT:
-            rospy.logerr("AOC state not implemented.")
+        elif self.state == ADROCState.WAIT_FOR_INPUT:
+            rospy.logerr("ADROC state not implemented.")
             return
 
-        elif self.state == AOCState.CONCLUDE:
+        elif self.state == ADROCState.CONCLUDE:
             # Print out last stuff or whatever, then switch to shutdown.
-            rospy.loginfo("AOC State -> SHUTDOWN")
-            self.change_state(AOCState.SHUTDOWN)
+            rospy.loginfo("ADROC State -> SHUTDOWN")
+            self.change_state(ADROCState.SHUTDOWN)
 
         else:
-            rospy.logerr("AOC state not recognized.")
+            rospy.logerr("ADROC state not recognized.")
             return
 
 if __name__ == '__main__':
-    aoc = AOC_Manager()
-    r = rospy.Rate(aoc.rate)
+    adroc = ADROC_Manager()
+    r = rospy.Rate(adroc.rate)
 
     rospy.wait_for_service('loco/controller/yaw')
     rospy.loginfo("Yaw service available...")
-    rospy.loginfo("INITIATING AOC!")
+    rospy.loginfo("INITIATING ADROC!")
 
-    while not rospy.is_shutdown() and aoc.state != AOCState.SHUTDOWN:
-        aoc.run()
+    while not rospy.is_shutdown() and adroc.state != ADROCState.SHUTDOWN:
+        adroc.run()
         r.sleep()
 
 else:
