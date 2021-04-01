@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 import rospy
+import actionlib
 
-from adroc.msg import DiverRelativePosition
+import adroc.msg
 from loco_pilot.srv import Yaw, YawRequest, YawResponse
 from std_srvs.srv import Trigger, TriggerRequest, TriggerResponse
 
@@ -13,11 +14,29 @@ class ADROCState:
     WAIT_FOR_INPUT = 4
     CONCLUDE = 5
     SHUTDOWN = 6
+    
+    def id_to_string(id):
+        if id == 0:
+            return "INIT"
+        elif id == 1:
+            return "SEARCH"
+        elif id == 2:
+            return "APPROACH"
+        elif id == 3:
+            return "GREET"
+        elif id == 4:
+            return "WAIT_FOR_INPUT"
+        elif id == 5:
+            return "CONCLUDE"
+        elif id == 6:
+            return "SHUTDOWN"
 
-class ADROC_Manager:
-    def __init__(self):
-        rospy.init_node('adroc_manager', anonymous=False)
-        self.rate = 10
+class ADROC_Action:
+    _feedback = adroc.msg.ApproachDiverFeedback()
+    _result = adroc.msg.ApproachDiverResult()
+
+    def __init__(self, name):
+        self.rate = 1
         self.state = ADROCState.INIT
 
         self.x_error_tolerance = rospy.get_param('adroc/x_error_tolerance', 0.01)
@@ -25,7 +44,7 @@ class ADROC_Manager:
         self.pd_error_tolerance = rospy.get_param('adroc/pd_error_tolerance', 0.1)
         self.drp_active_timeout = rospy.get_param('adroc/drp_active_timeout', 1)
 
-        rospy.Subscriber('/drp/drp_target', DiverRelativePosition, self.drp_cb)
+        rospy.Subscriber('/drp/drp_target', adroc.msg.DiverRelativePosition, self.drp_cb)
         self.drp_msgs = list()
         self.last_drp_msg = 0
 
@@ -33,6 +52,10 @@ class ADROC_Manager:
         self.deactivate_drp_controller = rospy.ServiceProxy('drp_reactive_controller/stop', Trigger)
         
         self.search_yaw_speed = 0.1
+
+        self._action_name = name
+        self._as = actionlib.SimpleActionServer(self._action_name, adroc.msg.ApproachDiverAction, execute_cb=self.execute_cb, auto_start=False)
+        self._as.start()
 
     def drp_cb(self, msg):
         if len(self.drp_msgs) == 5:
@@ -146,14 +169,41 @@ class ADROC_Manager:
             rospy.logerr("ADROC state not recognized.")
             return
 
-if __name__ == '__main__':
-    adroc = ADROC_Manager()
-    r = rospy.Rate(adroc.rate)
-    rospy.loginfo("INITIATING ADROC!")
+    def execute_cb(self, goal):
+        # helper variables
+        r = rospy.Rate(self.rate)
+        success = True
+        
+        # start executing the action
+        while not rospy.is_shutdown() and self.state != ADROCState.SHUTDOWN:
+            # check that preempt has not been requested by the client
+            if self._as.is_preempt_requested():
+                rospy.loginfo('%s: Preempted' % self._action_name)
+                self._as.set_preempted()
+                success = False
+                break
 
-    while not rospy.is_shutdown() and adroc.state != ADROCState.SHUTDOWN:
-        adroc.run()
-        r.sleep()
+            # Actually do the processing of ADROC states and such
+            adroc.run()
+
+            # publish the feedback
+            self._feedback.adroc_state_id = self.state
+            self._feedback.adroc_state_name = ADROCState.id_to_string(self.state)
+            self._as.publish_feedback(self._feedback)
+
+            # this step is not necessary, the sequence is computed at 1 Hz for demonstration purposes
+            r.sleep()
+
+        rospy.loginfo('%s: Succeeded' % self._action_name)  
+        self._result.success = success
+        self._result.final_relative_position = self.drp_msgs[-1]
+        self._as.set_succeeded(self._result)
+    
+
+if __name__ == '__main__':
+    rospy.init_node('adroc', anonymous=False)
+    adroc = ADROC_Action(rospy.get_name())
+    rospy.spin()
 
 else:
     pass
