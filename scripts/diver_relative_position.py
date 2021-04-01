@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import rospy
 import math
 
@@ -30,7 +30,7 @@ class DRP_Processor:
         self.drp_topic = rospy.get_param('drp/drp_topic','drp/drp_target')
 
         # Option variables
-        self.visualize = rospy.get_param('drp/vizualize', default=False)
+        self.visualize = rospy.get_param('drp/vizualize', default=True)
 
 
         if self.visualize:
@@ -220,8 +220,8 @@ class DRP_Processor:
             cv2.rectangle(self.cv_image,(xmin,ymin),(xmax,ymax),(0,255,0),3)
 
 
-        cv2.imshow("DRP visualization", self.cv_image)
-        cv2.waitKey(1)
+        # cv2.imshow("DRP visualization", self.cv_image)
+        # cv2.waitKey(1)
 
         return self.bridge_object.cv2_to_imgmsg(self.cv_image, "bgr8")
 

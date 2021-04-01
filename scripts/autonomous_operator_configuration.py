@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import rospy
 
 from adroc.msg import DiverRelativePosition
@@ -31,8 +31,7 @@ class ADROC_Manager:
 
         self.activate_drp_controller = rospy.ServiceProxy('drp_reactive_controller/start', Trigger)
         self.deactivate_drp_controller = rospy.ServiceProxy('drp_reactive_controller/stop', Trigger)
-        self.yaw_service = rospy.ServiceProxy('/loco/controller/yaw', Yaw)
-
+        
         self.search_yaw_speed = 0.1
 
     def drp_cb(self, msg):
@@ -80,7 +79,7 @@ class ADROC_Manager:
         req.thrust = self.search_yaw_speed
 
         rospy.loginfo("ADROC Searching...yawing at %f for %f seconds", req.thrust, req.duration)
-        self.yaw_service(req)
+        # self.yaw_service(req)
 
         return
 
@@ -150,9 +149,6 @@ class ADROC_Manager:
 if __name__ == '__main__':
     adroc = ADROC_Manager()
     r = rospy.Rate(adroc.rate)
-
-    rospy.wait_for_service('loco/controller/yaw')
-    rospy.loginfo("Yaw service available...")
     rospy.loginfo("INITIATING ADROC!")
 
     while not rospy.is_shutdown() and adroc.state != ADROCState.SHUTDOWN:
