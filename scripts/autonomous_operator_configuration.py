@@ -14,7 +14,7 @@ class ADROCState:
     WAIT_FOR_INPUT = 4
     CONCLUDE = 5
     SHUTDOWN = 6
-    
+
     def id_to_string(id):
         if id == 0:
             return "INIT"
@@ -36,7 +36,7 @@ class ADROC_Action:
     _result = adroc.msg.ApproachDiverResult()
 
     def __init__(self, name):
-        self.rate = 1
+        self.rate = 10
         self.state = ADROCState.INIT
 
         self.x_error_tolerance = rospy.get_param('adroc/x_error_tolerance', 0.01)
@@ -194,10 +194,16 @@ class ADROC_Action:
             # this step is not necessary, the sequence is computed at 1 Hz for demonstration purposes
             r.sleep()
 
-        rospy.loginfo('%s: Succeeded' % self._action_name)  
-        self._result.success = success
-        self._result.final_relative_position = self.drp_msgs[-1]
-        self._as.set_succeeded(self._result)
+        if success:
+            rospy.loginfo('%s: Succeeded' % self._action_name)  
+            self._result.success = success
+            self._result.final_relative_position = self.drp_msgs[-1]
+            self._as.set_succeeded(self._result)
+
+        #Reset for new ADROC, regardless of what the previous ADROC finished as.
+        self.state = ADROCState.INIT
+        req = TriggerRequest()
+        self.deactivate_drp_controller(req)
     
 
 if __name__ == '__main__':

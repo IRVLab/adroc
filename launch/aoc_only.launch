@@ -1,7 +1,7 @@
 <launch>
     <node name='adroc' pkg='adroc' type='autonomous_operator_configuration.py' output='screen'> 
-        <param name='x_error_tolerance' value='0.01'/>
-        <param name='y_error_tolerance' value='0.01'/>
+        <param name='x_error_tolerance' value='0.1'/>
+        <param name='y_error_tolerance' value='0.1'/>
         <param name='pd_error_tolerance' value='0.1'/>
         <param name='drp_active_timeout' value='1'/>
     </node>
