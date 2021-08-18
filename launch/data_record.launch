@@ -1,0 +1,4 @@
+<launch>
+        <node pkg="rosbag" type="record" name="record_adroc"
+              args="record -o /data/adroc /loco_cams/right/image_raw /drp/drp_target /darknet_ros/bounding_boxes /detected_poses_keypoints /adroc/feedback /adroc/goal /adroc/result"/>
+</launch>

@@ -20,6 +20,7 @@
 
 import rospy
 import actionlib
+import roslaunch
 
 import adroc.msg
 from loco_pilot.srv import Yaw, YawRequest, YawResponse
@@ -75,6 +76,32 @@ class ADROC_Action:
         self._action_name = name
         self._as = actionlib.SimpleActionServer(self._action_name, adroc.msg.ApproachDiverAction, execute_cb=self.execute_cb, auto_start=False)
         self._as.start()
+
+        self.bag_launch = None
+        self.lf_name = "/home/irvlab/catkin_ws/src/adroc/launch/data_record.launch"
+        self.dg_name = "/data/adroc_digest.txt"
+        self.initated_time = None
+
+    def begin_data_recoding(self):
+        rospy.init_node('en_Mapping', anonymous=True)
+        uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+        roslaunch.configure_logging(uuid)
+        self.bag_launch = roslaunch.parent.ROSLaunchParent(uuid, [self.lf_name])
+        self.bag_launch.start()
+
+    def end_data_recording(self):
+        self.bag_launch.shutdown()
+
+        # Write to digest file.
+        current_time = rospy.get_time()
+        duration = current_time - self.initated_time
+        final_drp = self.drp_msgs[-1]
+
+        # Write trial ID, DRP (x,y,pd), duration, and final state.
+        with open(self.dg_name, 'a+') as f:
+            f.write("Trial at %f,%f,%d,%d,%f,%f,%s\n"%(self.initated_time, final_drp.target_x, final_drp.target_y, final_drp.pseudo_distance, duration, ADROCState.id_to_string(self.state)))
+
+
 
     def drp_cb(self, msg):
         if len(self.drp_msgs) == 5:
@@ -193,6 +220,9 @@ class ADROC_Action:
         r = rospy.Rate(self.rate)
         success = True
         
+        self.initated_time = rospy.get_time()
+        self.begin_data_recoding()
+
         # start executing the action
         while not rospy.is_shutdown() and self.state != ADROCState.SHUTDOWN:
             # check that preempt has not been requested by the client
@@ -218,6 +248,8 @@ class ADROC_Action:
             self._result.success = success
             self._result.final_relative_position = self.drp_msgs[-1]
             self._as.set_succeeded(self._result)
+
+        self.end_data_recording()
 
         #Reset for new ADROC, regardless of what the previous ADROC finished as.
         self.state = ADROCState.INIT
