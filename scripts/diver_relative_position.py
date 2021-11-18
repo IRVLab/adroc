@@ -110,10 +110,12 @@ class DRP_Processor:
         max_idx = None
 
         for idx, b in enumerate(msg.bounding_boxes):
-            boxes.append(b)
-            if b.probability > max_conf:
-                max_conf = b.probability
-                max_idx = idx
+            class_id = b.Class
+            if "diver" in class_id:
+                boxes.append(b)
+                if b.probability > max_conf:
+                    max_conf = b.probability
+                    max_idx = idx
 
         if not max_idx is None:
             selbox = boxes[max_idx]

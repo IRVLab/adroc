@@ -22,8 +22,11 @@ import rospy
 import actionlib
 import roslaunch
 
+import subprocess, signal, os
+
 import adroc.msg
 from loco_pilot.srv import Yaw, YawRequest, YawResponse
+from loco_pilot.msg import Command
 from std_srvs.srv import Trigger, TriggerRequest, TriggerResponse
 
 class ADROCState:
@@ -71,27 +74,23 @@ class ADROC_Action:
         self.activate_drp_controller = rospy.ServiceProxy('drp_reactive_controller/start', Trigger)
         self.deactivate_drp_controller = rospy.ServiceProxy('drp_reactive_controller/stop', Trigger)
         
-        self.search_yaw_speed = 0.1
+        self.cmd_pub = rospy.Publisher('/loco/command', Command, queue_size=10)
+        self.search_yaw_speed = 0.2
+        self.search_it_count = 0
 
         self._action_name = name
         self._as = actionlib.SimpleActionServer(self._action_name, adroc.msg.ApproachDiverAction, execute_cb=self.execute_cb, auto_start=False)
         self._as.start()
 
         self.bag_launch = None
-        self.lf_name = "/home/irvlab/catkin_ws/src/adroc/launch/data_record.launch"
+        self.lf_cmd = "roslaunch /home/irvlab/catkin_ws/src/adroc/launch/data_record.launch"
         self.dg_name = "/data/adroc_digest.txt"
         self.initated_time = None
 
     def begin_data_recoding(self):
-        rospy.init_node('en_Mapping', anonymous=True)
-        uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
-        roslaunch.configure_logging(uuid)
-        self.bag_launch = roslaunch.parent.ROSLaunchParent(uuid, [self.lf_name])
-        self.bag_launch.start()
+        pass
 
     def end_data_recording(self):
-        self.bag_launch.shutdown()
-
         # Write to digest file.
         current_time = rospy.get_time()
         duration = current_time - self.initated_time
@@ -99,9 +98,7 @@ class ADROC_Action:
 
         # Write trial ID, DRP (x,y,pd), duration, and final state.
         with open(self.dg_name, 'a+') as f:
-            f.write("Trial at %f,%f,%d,%d,%f,%f,%s\n"%(self.initated_time, final_drp.target_x, final_drp.target_y, final_drp.pseudo_distance, duration, ADROCState.id_to_string(self.state)))
-
-
+            f.write("Trial at %f,%d,%d,%f,%f,%s\n"%(self.initated_time, final_drp.target_x, final_drp.target_y, final_drp.pseudo_distance, duration, ADROCState.id_to_string(self.state)))
 
     def drp_cb(self, msg):
         if len(self.drp_msgs) == 5:
@@ -142,13 +139,22 @@ class ADROC_Action:
 
     # Search for a diver
     def perform_search(self):
-        # Using LoCO Pilot motion primatives, ask for small Yaw (for duration appropriate to the rate)
-        req = YawRequest()
-        req.duration = 1/self.rate
-        req.thrust = self.search_yaw_speed
+        msg = Command() 
+        msg.roll = 0
+        msg.pitch = 0
+        msg.yaw = self.search_yaw_speed
+        msg.throttle = 0 
+        msg.heave = 0
 
-        rospy.loginfo("ADROC Searching...yawing at %f for %f seconds", req.thrust, req.duration)
-        # self.yaw_service(req)
+        if(self.search_it_count<10):
+            self.cmd_pub.publish(msg)
+            self.search_it_count+=1
+            rospy.loginfo("ADROC Searching...yawing at %f", msg.yaw)
+        elif(self.search_it_count<20):
+            self.search_it_count+=1
+            rospy.loginfo("ADROC Searching...waiting")
+        else:
+            self.search_it_count = 0
 
         return
 
