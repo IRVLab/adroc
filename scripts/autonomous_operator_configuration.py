@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python
 
 # This code is a part of the LoCO AUV project.
 # Copyright (C) The Regents of the University of Minnesota
