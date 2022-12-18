@@ -1,7 +1,7 @@
 # adroc
 ROS package for Autonomous Diver-Relative Operator Configuration for AUVs.
 
-##How to run ADROC
+## How to run ADROC
 
 1. Start the diver detector and body pose estimator nodes (the body pose estimator node might need a venv active to work?). 
 2. Once those nodes are running, run `rosrun adroc drp_only.launch` to start the Diver-Relative-Pose estimator. 
